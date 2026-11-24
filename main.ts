@@ -32,6 +32,7 @@ function collectProblems(line: string): string[] {
   if (charCount > MAX_CHARS) problems.push(`too long: ${charCount} characters (max ${MAX_CHARS})`);
   if (byteCount > MAX_BYTES) problems.push(`too large: ${byteCount} UTF-8 bytes`);
   if (line.trim() === "") problems.push("entry is only whitespace");
+  if (/\p{Cc}/u.test(line)) problems.push("entry contains control characters");
   if (line.indexOf("\n") !== -1 || line.indexOf("\r") !== -1) {
     problems.push("entry spans more than one line");
   }
@@ -55,13 +56,17 @@ function main(): void {
   const target = join(outDir, OUTPUT_NAME);
   writeFileSync(target, line, { encoding: "utf8", flag: "w" });
 
-  // Verify the round trip: what landed on disk must hash identically to the source.
+  // Verify the round trip: the bytes on disk must equal the source exactly,
+  // and the file on disk must itself still be a single line.
   const written = readFileSync(target, "utf8");
   const writtenDigest = sha256Hex(written);
-  if (writtenDigest !== sourceDigest) {
+  if (writtenDigest !== sourceDigest || written !== line) {
     throw new Error(
       `output verification failed: sha256 ${writtenDigest} != source sha256 ${sourceDigest}`,
     );
+  }
+  if (written.length !== line.length || written.indexOf("\n") !== -1) {
+    throw new Error("output verification failed: written file is not the single source line");
   }
 
   const chars = Array.from(line).length;
